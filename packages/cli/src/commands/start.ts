@@ -10,9 +10,19 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { resolve, basename, dirname } from "node:path";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
+import { join, resolve, basename, dirname } from "node:path";
+import { homedir } from "node:os";
 import { cwd } from "node:process";
+import { setTimeout as sleep } from "node:timers/promises";
 import chalk from "chalk";
 import ora from "ora";
 import type { Command } from "commander";
@@ -101,6 +111,102 @@ import { projectSessionUrl } from "../lib/routes.js";
 // =============================================================================
 // HELPERS
 // =============================================================================
+
+interface StartOptions {
+  dashboard?: boolean;
+  orchestrator?: boolean;
+  rebuild?: boolean;
+  dev?: boolean;
+  interactive?: boolean;
+  daemon?: boolean;
+  logFile?: string;
+}
+
+const DAEMON_START_TIMEOUT_MS = 45_000;
+
+function defaultDaemonLogPath(projectArg?: string): string {
+  const safeProject = (projectArg ?? "default")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return join(
+    homedir(),
+    ".agent-orchestrator",
+    "logs",
+    `ao-${safeProject || "default"}-${stamp}.log`,
+  );
+}
+
+function buildDaemonStartArgs(projectArg: string | undefined, opts: StartOptions): string[] {
+  const args = ["start"];
+  if (projectArg) args.push(projectArg);
+  if (opts.dashboard === false) args.push("--no-dashboard");
+  if (opts.orchestrator === false) args.push("--no-orchestrator");
+  if (opts.rebuild) args.push("--rebuild");
+  if (opts.dev) args.push("--dev");
+  return args;
+}
+
+async function startDetachedDaemon(projectArg: string | undefined, opts: StartOptions): Promise<void> {
+  if (opts.interactive) {
+    throw new Error("`ao start --daemon` cannot be combined with --interactive.");
+  }
+
+  const running = await getRunning();
+  if (running) {
+    console.log(chalk.cyan("AO is already running."));
+    console.log(`Dashboard: http://localhost:${running.port}`);
+    console.log(`PID: ${running.pid}`);
+    console.log(`Projects: ${running.projects.join(", ")}`);
+    return;
+  }
+
+  const logPath = resolve(opts.logFile ?? defaultDaemonLogPath(projectArg));
+  mkdirSync(dirname(logPath), { recursive: true });
+  const logFd = openSync(logPath, "a");
+  const args = buildDaemonStartArgs(projectArg, opts);
+  const child = spawn(process.execPath, [process.argv[1] ?? "ao", ...args], {
+    cwd: process.cwd(),
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: {
+      ...process.env,
+      AO_CALLER_TYPE: "agent",
+      AO_DAEMONIZED: "1",
+    },
+  });
+  closeSync(logFd);
+
+  child.unref();
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < DAEMON_START_TIMEOUT_MS) {
+    const state = await getRunning();
+    const startedState =
+      state?.pid === child.pid || (state && (!projectArg || state.projects.includes(projectArg)))
+        ? state
+        : null;
+    if (startedState) {
+      console.log(chalk.green("✓ AO started in background"));
+      console.log(`PID: ${startedState.pid}`);
+      console.log(`Dashboard: http://localhost:${startedState.port}`);
+      console.log(`Log: ${logPath}`);
+      console.log(chalk.dim("Stop with: ao stop"));
+      return;
+    }
+
+    if (child.pid) {
+      try {
+        process.kill(child.pid, 0);
+      } catch {
+        throw new Error(`AO daemon exited before startup completed. Check log: ${logPath}`);
+      }
+    }
+    await sleep(250);
+  }
+
+  throw new Error(`Timed out waiting for AO daemon to start. Check log: ${logPath}`);
+}
 
 function readProjectBehaviorConfig(projectPath: string): LocalProjectConfig {
   const localConfig = loadLocalProjectConfigDetailed(projectPath);
@@ -1281,17 +1387,23 @@ export function registerStart(program: Command): void {
     .option("--rebuild", "Clean and rebuild dashboard before starting")
     .option("--dev", "Use Next.js dev server with hot reload (for dashboard UI development)")
     .option("--interactive", "Prompt to configure config settings")
+    .option("-d, --daemon", "Run AO in the background and return after startup")
+    .option("--log-file <path>", "Log file for --daemon output")
     .action(
       async (
         projectArg?: string,
-        opts?: {
-          dashboard?: boolean;
-          orchestrator?: boolean;
-          rebuild?: boolean;
-          dev?: boolean;
-          interactive?: boolean;
-        },
+        opts?: StartOptions,
       ) => {
+        if (opts?.daemon) {
+          try {
+            await startDetachedDaemon(projectArg, opts);
+            return;
+          } catch (err) {
+            console.error(chalk.red("\nError:"), err instanceof Error ? err.message : String(err));
+            process.exit(1);
+          }
+        }
+
         let releaseStartupLock: (() => void) | undefined;
         let startupLockReleased = false;
         const unlockStartup = (): void => {

@@ -26,6 +26,8 @@ interface OrchestratorPromptRenderData {
   projectSpecificRulesSection: string;
   repoConfiguredSection: string;
   repoNotConfiguredSection: string;
+  collectionSection: string;
+  orchestrationPolicySection: string;
 }
 
 type OrchestratorPromptRenderKey = keyof OrchestratorPromptRenderData;
@@ -67,6 +69,95 @@ function buildProjectSpecificRulesSection(project: ProjectConfig): string {
   return rules;
 }
 
+function buildCollectionSection(project: ProjectConfig): string {
+  if (project.projectKind !== "collection") return "";
+  const contextDir = project.contextDir ?? ".ao/context";
+  const repos = project.repos ?? {};
+  const profiles = project.profiles ?? { default: Object.keys(repos) };
+  const lines = [
+    "## Collection Project",
+    "",
+    `- Collection root: ${project.path}`,
+    `- Shared context directory: ${contextDir}`,
+    `- Default profile: ${(profiles.default ?? []).join(", ") || "empty"}`,
+    "",
+    "Subprojects:",
+  ];
+
+  for (const [repoKey, repo] of Object.entries(repos)) {
+    lines.push(`- ${repoKey}: ${repo.path} (${repo.repo ?? "no remote"}, default ${repo.defaultBranch})`);
+  }
+
+  if (Object.keys(repos).length === 0) {
+    lines.push("- No subprojects are registered yet. Use the project settings UI to add them.");
+  }
+
+  lines.push("");
+  lines.push("When spawning workers for this collection, prefer prompt-driven tasks. Workers receive a composite workspace with the selected subproject worktrees and the shared context directory.");
+  return lines.join("\n");
+}
+
+function formatAgentConfigValue(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function buildOrchestrationPolicySection(project: ProjectConfig): string {
+  const policy = project.orchestration;
+  if (!policy) return "";
+
+  const mode = policy.mode ?? "coordinate";
+  const subagents = policy.subagents ?? {};
+  const lines = [
+    "## Orchestration Policy",
+    "",
+    `- Mode: ${mode}`,
+    `- Default worker profile: ${policy.defaultSubagent ?? "none"}`,
+  ];
+
+  if (mode === "delegate_only") {
+    lines.push(
+      "- You are delegate-only: keep repository implementation read-only in the orchestrator session.",
+      "- Spawn AO worker sessions for implementation, repo mutation, branch work, test runs tied to changes, and PR ownership.",
+      "- Do not use Claude Code/oh-my-claudecode native subagents, Task agents, OMC agents, or harness-local subagent mechanisms for project work; they are outside AO tracking and cannot honor AO worker profiles.",
+      "- Your job is to analyze, decompose, dispatch, monitor, review worker output, and consolidate the final answer.",
+    );
+  }
+
+  lines.push("", "Worker profiles:");
+  if (Object.keys(subagents).length === 0) {
+    lines.push("- No worker profiles configured.");
+  }
+
+  for (const [name, profile] of Object.entries(subagents)) {
+    const details = Object.entries(profile.agentConfig ?? {})
+      .map(([key, value]) => `${key}=${formatAgentConfigValue(value)}`)
+      .filter(Boolean)
+      .join(", ");
+    const repos = profile.repos?.length ? ` repos=${profile.repos.join(",")}` : "";
+    const description = profile.description ? ` - ${profile.description}` : "";
+    lines.push(
+      `- ${name}: agent=${profile.agent}${details ? ` (${details})` : ""}${repos}${description}`,
+    );
+  }
+
+  if (Object.keys(subagents).length > 0) {
+    lines.push(
+      "",
+      "Spawn AO workers with the selected profile:",
+      "```bash",
+      'ao spawn --worker-profile <profile> --prompt "..."',
+      "```",
+      "Use different worker profiles when model/harness diversity is useful. State which profile owns each delegated task.",
+    );
+  }
+
+  return lines.join("\n");
+}
+
 function removeOptionalSectionBlocks(
   template: string,
   data: OrchestratorPromptRenderData,
@@ -76,6 +167,8 @@ function removeOptionalSectionBlocks(
     ["REPO_NOT_CONFIGURED_SECTION_START", "REPO_NOT_CONFIGURED_SECTION_END", data.repoNotConfiguredSection],
     ["AUTOMATED_REACTIONS_SECTION_START", "AUTOMATED_REACTIONS_SECTION_END", data.automatedReactionsSection],
     ["PROJECT_SPECIFIC_RULES_SECTION_START", "PROJECT_SPECIFIC_RULES_SECTION_END", data.projectSpecificRulesSection],
+    ["COLLECTION_SECTION_START", "COLLECTION_SECTION_END", data.collectionSection],
+    ["ORCHESTRATION_POLICY_SECTION_START", "ORCHESTRATION_POLICY_SECTION_END", data.orchestrationPolicySection],
   ] as const;
 
   let interpolated = template;
@@ -155,6 +248,8 @@ function createRenderData(opts: OrchestratorPromptConfig): OrchestratorPromptRen
     dashboardPort: String(config.port ?? 3000),
     automatedReactionsSection: buildAutomatedReactionsSection(project),
     projectSpecificRulesSection: buildProjectSpecificRulesSection(project),
+    collectionSection: buildCollectionSection(project),
+    orchestrationPolicySection: buildOrchestrationPolicySection(project),
     repoConfiguredSection: hasRepo ? "true" : "",
     repoNotConfiguredSection: hasRepo ? "" : "true",
   };

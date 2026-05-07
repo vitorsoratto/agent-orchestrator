@@ -63,9 +63,32 @@ export default async function ProjectSettingsPage(props: {
 
         <ProjectSettingsForm
           projectId={projectId}
+          projectKind={project.projectKind === "collection" ? "collection" : "repo"}
           initialValues={{
             agent: project.agent ?? "",
             runtime: project.runtime ?? "",
+            orchestratorAgent: project.orchestrator?.agent ?? "",
+            workerAgent: project.worker?.agent ?? "",
+            workerModel: typeof project.worker?.agentConfig?.model === "string" ? project.worker.agentConfig.model : "",
+            workerReasoningEffort:
+              typeof project.worker?.agentConfig?.reasoningEffort === "string"
+                ? project.worker.agentConfig.reasoningEffort
+                : "",
+            orchestrationMode: project.orchestration?.mode ?? "coordinate",
+            defaultSubagent: project.orchestration?.defaultSubagent ?? "",
+            subagents: Object.entries(project.orchestration?.subagents ?? {}).map(([name, profile]) => ({
+              name,
+              agent: profile.agent ?? "",
+              model: typeof profile.agentConfig?.model === "string" ? profile.agentConfig.model : "",
+              reasoningEffort:
+                typeof profile.agentConfig?.reasoningEffort === "string"
+                  ? profile.agentConfig.reasoningEffort
+                  : "",
+              permissions:
+                typeof profile.agentConfig?.permissions === "string" ? profile.agentConfig.permissions : "",
+              description: profile.description ?? "",
+              repos: profile.repos?.join(",") ?? "",
+            })),
             trackerPlugin: project.tracker?.plugin ?? "",
             scmPlugin: project.scm?.plugin ?? "",
             reactions: JSON.stringify(project.reactions ?? {}, null, 2),

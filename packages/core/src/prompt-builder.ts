@@ -115,6 +115,34 @@ function buildConfigLayer(config: PromptBuildConfig): string {
     lines.push(`- Tracker: ${project.tracker.plugin}`);
   }
 
+  const policy = project.orchestration;
+  if (policy) {
+    lines.push(`- Orchestration mode: ${policy.mode ?? "coordinate"}`);
+    if (policy.defaultSubagent) {
+      lines.push(`- Default worker profile: ${policy.defaultSubagent}`);
+    }
+  }
+
+  if (project.projectKind === "collection") {
+    const contextDir = project.contextDir ?? ".ao/context";
+    const repos = project.repos ?? {};
+    const defaultProfile = project.profiles?.["default"] ?? Object.keys(repos);
+    lines.push(`- Project kind: collection`);
+    lines.push(`- Collection root: ${project.path}`);
+    lines.push(`- Shared context directory: ${contextDir}`);
+    if (defaultProfile.length > 0) {
+      lines.push(`- Default profile repos: ${defaultProfile.join(", ")}`);
+    }
+    if (Object.keys(repos).length > 0) {
+      lines.push(`\n## Collection Workspace`);
+      lines.push(`Your workspace root contains one git worktree per selected subproject.`);
+      lines.push(`Use the shared context directory at \`${contextDir}\` for project-level notes and reference material.`);
+      for (const [repoKey, repo] of Object.entries(repos)) {
+        lines.push(`- ${repoKey}: ${repo.path} (${repo.repo ?? "no remote"}, default ${repo.defaultBranch})`);
+      }
+    }
+  }
+
   if (issueId) {
     lines.push(`\n## Task`);
     lines.push(`Work on issue: ${issueId}`);
@@ -126,6 +154,13 @@ function buildConfigLayer(config: PromptBuildConfig): string {
   if (issueContext) {
     lines.push(`\n## Issue Details`);
     lines.push(issueContext);
+  }
+
+  if (policy?.mode === "delegate_only") {
+    lines.push(`\n## Delegation Contract`);
+    lines.push(
+      "This worker owns execution for its assigned task. The orchestrator is read-only and will review, monitor, and coordinate rather than implement directly.",
+    );
   }
 
   // Include reaction rules so the agent knows what to expect

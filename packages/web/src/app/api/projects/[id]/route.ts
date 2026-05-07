@@ -114,6 +114,7 @@ export async function GET(
         project: {
           id,
           name: state.project?.name ?? id,
+          projectKind: state.project?.projectKind ?? "repo",
           path: state.globalEntry?.path ?? state.project?.path,
           repo:
             (state.globalEntry?.repo &&
@@ -125,6 +126,9 @@ export async function GET(
           defaultBranch: state.globalEntry?.defaultBranch ?? "main",
           agent: state.project?.agent,
           runtime: state.project?.runtime,
+          orchestrator: state.project?.orchestrator,
+          worker: state.project?.worker,
+          orchestration: state.project?.orchestration,
           tracker: state.project?.tracker,
           scm: state.project?.scm,
           reactions: state.project?.reactions,
@@ -190,6 +194,24 @@ export async function PATCH(
     }
     if (hasOwn("runtime")) {
       nextConfig.runtime = sanitizeString(body["runtime"]);
+    }
+    if (hasOwn("orchestrator")) {
+      nextConfig.orchestrator =
+        body["orchestrator"] && typeof body["orchestrator"] === "object"
+          ? (body["orchestrator"] as LocalProjectConfig["orchestrator"])
+          : undefined;
+    }
+    if (hasOwn("worker")) {
+      nextConfig.worker =
+        body["worker"] && typeof body["worker"] === "object"
+          ? (body["worker"] as LocalProjectConfig["worker"])
+          : undefined;
+    }
+    if (hasOwn("orchestration")) {
+      nextConfig.orchestration =
+        body["orchestration"] && typeof body["orchestration"] === "object"
+          ? (body["orchestration"] as LocalProjectConfig["orchestration"])
+          : undefined;
     }
     if (hasOwn("tracker")) {
       const nextTracker =

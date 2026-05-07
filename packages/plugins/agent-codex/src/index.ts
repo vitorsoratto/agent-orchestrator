@@ -402,13 +402,20 @@ function appendApprovalFlags(
 }
 
 /** Append model and reasoning flags to a command parts array */
-function appendModelFlags(parts: string[], model: string | undefined): void {
+function appendModelFlags(
+  parts: string[],
+  model: string | undefined,
+  reasoningEffort?: string,
+): void {
   if (!model) return;
   parts.push("--model", shellEscape(model));
 
+  if (reasoningEffort) {
+    parts.push("-c", `model_reasoning_effort=${shellEscape(reasoningEffort)}`);
+    return;
+  }
+
   // Auto-detect o-series models and enable reasoning via config override.
-  // Codex does not have a --reasoning flag; reasoning is controlled via
-  // the model_reasoning_effort config key.
   if (/^o[34]/i.test(model)) {
     parts.push("-c", "model_reasoning_effort=high");
   }
@@ -457,7 +464,7 @@ function createCodexAgent(): Agent {
       appendNoUpdateCheckFlag(parts);
 
       appendApprovalFlags(parts, config.permissions);
-      appendModelFlags(parts, config.model);
+      appendModelFlags(parts, config.model, config.reasoningEffort);
 
       if (config.systemPromptFile) {
         // Codex reads developer instructions from a file via config override
@@ -740,7 +747,11 @@ function createCodexAgent(): Agent {
 
       appendApprovalFlags(parts, project.agentConfig?.permissions);
       const effectiveModel = (project.agentConfig?.model ?? model) as string | undefined;
-      appendModelFlags(parts, effectiveModel ?? undefined);
+      appendModelFlags(
+        parts,
+        effectiveModel ?? undefined,
+        project.agentConfig?.reasoningEffort as string | undefined,
+      );
 
       // Positional threadId goes last, after all flags
       parts.push(shellEscape(threadId));

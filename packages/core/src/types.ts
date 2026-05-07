@@ -368,6 +368,12 @@ export interface SessionSpawnConfig {
   agent?: string;
   /** Override the OpenCode subagent for this session (e.g. "sisyphus", "oracle") */
   subagent?: string;
+  /** Collection profile to use for composite workspaces. */
+  profile?: string;
+  /** Explicit collection repo keys to include in the composite workspace. */
+  repos?: string[];
+  /** Named worker profile from project.orchestration.subagents. */
+  workerProfile?: string;
 }
 
 /** Config for creating an orchestrator session */
@@ -571,6 +577,7 @@ export interface AgentLaunchConfig {
   prompt?: string;
   permissions?: AgentPermissionInput;
   model?: string;
+  reasoningEffort?: AgentReasoningEffort;
   /**
    * System prompt to pass to the agent for orchestrator context.
    * - Claude Code: --append-system-prompt
@@ -681,6 +688,8 @@ export interface WorkspaceInfo {
   branch: string;
   sessionId: SessionId;
   projectId: string;
+  repos?: Record<string, { path: string; branch: string }>;
+  contextPath?: string;
 }
 
 // =============================================================================
@@ -1474,9 +1483,58 @@ export interface RoleAgentConfig {
   agentConfig?: AgentSpecificConfig;
 }
 
+export type ProjectKind = "repo" | "collection";
+
+export type OrchestrationMode = "delegate_only" | "coordinate" | "off";
+
+export type AgentReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export interface SubagentProfileConfig {
+  /** Agent plugin/harness used by this worker profile, e.g. "codex" or "pi". */
+  agent: string;
+  /** Human-facing purpose shown in orchestrator prompts. */
+  description?: string;
+  /** Optional collection repo keys this worker profile should receive by default. */
+  repos?: string[];
+  /** Agent-specific settings such as model and reasoningEffort. */
+  agentConfig?: AgentSpecificConfig;
+}
+
+export interface OrchestrationPolicyConfig {
+  /** delegate_only keeps the orchestrator read-only and makes workers own execution. */
+  mode?: OrchestrationMode;
+  /** Default worker profile used when ao spawn has no --worker-profile. */
+  defaultSubagent?: string;
+  /** Named worker profiles available to the orchestrator. */
+  subagents?: Record<string, SubagentProfileConfig>;
+}
+
+export interface RepoTargetConfig {
+  /** Human-readable display name. Defaults to the repo key. */
+  name?: string;
+
+  /** Repository path for the configured SCM provider, e.g. "owner/repo". */
+  repo?: string;
+
+  /** Path relative to the collection root. */
+  path: string;
+
+  /** Default branch for this subproject. */
+  defaultBranch: string;
+
+  /** SCM configuration for this subproject. */
+  scm?: SCMConfig;
+
+  /** Issue tracker configuration for this subproject. */
+  tracker?: TrackerConfig;
+}
+
 export interface ProjectConfig {
   /** Display name */
   name: string;
+
+  /** Project shape. Defaults to "repo" for backwards compatibility. */
+  projectKind?: ProjectKind;
 
   /** Repository path for the configured SCM provider, e.g. "owner/repo" or "group/subgroup/repo" (optional — omitted when no remote detected) */
   repo?: string;
@@ -1526,6 +1584,9 @@ export interface ProjectConfig {
 
   worker?: RoleAgentConfig;
 
+  /** Orchestrator/worker delegation policy. */
+  orchestration?: OrchestrationPolicyConfig;
+
   /** Per-project reaction overrides */
   reactions?: Record<string, Partial<ReactionConfig>>;
 
@@ -1547,6 +1608,15 @@ export interface ProjectConfig {
     | "kill-previous";
 
   opencodeIssueSessionStrategy?: "reuse" | "delete" | "ignore";
+
+  /** Collection subprojects keyed by stable repo key. */
+  repos?: Record<string, RepoTargetConfig>;
+
+  /** Collection profiles keyed by profile name. Values are repo keys. */
+  profiles?: Record<string, string[]>;
+
+  /** Context directory relative to the project path. Defaults to ".ao/context". */
+  contextDir?: string;
 }
 
 export interface TrackerConfig {
@@ -1622,6 +1692,7 @@ export interface AgentSpecificConfig {
   permissions?: AgentPermissionMode;
   model?: string;
   orchestratorModel?: string;
+  reasoningEffort?: AgentReasoningEffort;
   [key: string]: unknown;
 }
 

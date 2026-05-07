@@ -175,6 +175,13 @@ export {
 } from "./orchestrator-session-strategy.js";
 export { resolveSpawnTarget } from "./spawn-target.js";
 export type { SpawnTarget } from "./spawn-target.js";
+export {
+  addCollectionSubproject,
+  ensureCollectionContext,
+  listCollectionSubprojects,
+  removeCollectionSubproject,
+} from "./subprojects.js";
+export type { SubprojectCandidate, SubprojectsList } from "./subprojects.js";
 
 // Activity log — JSONL activity tracking for agents without native JSONL
 export {

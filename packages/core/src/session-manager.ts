@@ -1121,16 +1121,64 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
   }
 
   async function _spawnInner(spawnConfig: SessionSpawnConfig): Promise<Session> {
-    const project = config.projects[spawnConfig.projectId];
+    let project = config.projects[spawnConfig.projectId];
     if (!project) {
       throw new Error(`Unknown project: ${spawnConfig.projectId}`);
+    }
+
+    const workerProfileName =
+      spawnConfig.workerProfile ?? project.orchestration?.defaultSubagent;
+    const workerProfile = workerProfileName
+      ? project.orchestration?.subagents?.[workerProfileName]
+      : undefined;
+    if (workerProfileName && !workerProfile) {
+      throw new Error(
+        `Unknown worker profile "${workerProfileName}" for "${spawnConfig.projectId}"`,
+      );
+    }
+
+    if (workerProfile) {
+      project = {
+        ...project,
+        worker: {
+          ...(project.worker ?? {}),
+          agent: spawnConfig.agent ?? workerProfile.agent,
+          agentConfig: {
+            ...(project.worker?.agentConfig ?? {}),
+            ...(workerProfile.agentConfig ?? {}),
+          },
+        },
+      };
+    }
+
+    if (
+      project.projectKind === "collection" &&
+      (spawnConfig.profile || spawnConfig.repos?.length || workerProfile?.repos?.length)
+    ) {
+      const availableRepos = project.repos ?? {};
+      const selectedRepos = spawnConfig.repos?.length
+        ? spawnConfig.repos
+        : workerProfile?.repos?.length
+          ? workerProfile.repos
+          : (project.profiles?.[spawnConfig.profile ?? "default"] ?? []);
+      const missingRepos = selectedRepos.filter((repoKey) => !availableRepos[repoKey]);
+      if (missingRepos.length > 0) {
+        throw new Error(`Unknown subproject(s) for "${spawnConfig.projectId}": ${missingRepos.join(", ")}`);
+      }
+      project = {
+        ...project,
+        profiles: {
+          ...(project.profiles ?? {}),
+          default: selectedRepos,
+        },
+      };
     }
 
     const selection = resolveAgentSelection({
       role: "worker",
       project,
       defaults: config.defaults,
-      spawnAgentOverride: spawnConfig.agent,
+      spawnAgentOverride: workerProfile ? undefined : spawnConfig.agent,
     });
     const plugins = resolvePlugins(project, selection.agentName);
     if (!plugins.runtime) {
@@ -1282,6 +1330,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         systemPromptFile,
         permissions: selection.permissions,
         model: selection.model,
+        reasoningEffort: selection.reasoningEffort,
         subagent: spawnConfig.subagent ?? selection.subagent,
       };
 
@@ -1651,6 +1700,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       workspacePath,
       permissions: "permissionless" as const,
       model: selection.model,
+      reasoningEffort: selection.reasoningEffort,
       systemPromptFile,
       subagent: selection.subagent,
     };
@@ -2899,6 +2949,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       issueId: session.issueId ?? undefined,
       permissions: selection.role === "orchestrator" ? "permissionless" : selection.permissions,
       model: selection.model,
+      reasoningEffort: selection.reasoningEffort,
       subagent: selection.subagent,
     };
 

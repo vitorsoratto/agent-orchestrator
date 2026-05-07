@@ -202,11 +202,14 @@ const AgentPermissionSchema = z
   .default("permissionless")
   .transform((value) => (value === "skip" ? "permissionless" : value));
 
+const AgentReasoningEffortSchema = z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]);
+
 const AgentSpecificConfigSchema = z
   .object({
     permissions: AgentPermissionSchema,
     model: z.string().optional(),
     orchestratorModel: z.string().optional(),
+    reasoningEffort: AgentReasoningEffortSchema.optional(),
     opencodeSessionId: z.string().optional(),
   })
   .passthrough();
@@ -218,6 +221,7 @@ const RoleAgentSpecificConfigSchema = z
       .optional(),
     model: z.string().optional(),
     orchestratorModel: z.string().optional(),
+    reasoningEffort: AgentReasoningEffortSchema.optional(),
     opencodeSessionId: z.string().optional(),
   })
   .passthrough();
@@ -235,8 +239,33 @@ const RoleAgentConfigSchema = z
   })
   .optional();
 
+const RepoTargetConfigSchema = z.object({
+  name: z.string().optional(),
+  repo: z.string().optional(),
+  path: z.string(),
+  defaultBranch: z.string().default("main"),
+  scm: SCMConfigSchema.optional(),
+  tracker: TrackerConfigSchema.optional(),
+});
+
+const SubagentProfileConfigSchema = z.object({
+  agent: z.string(),
+  description: z.string().optional(),
+  repos: z.array(z.string()).optional(),
+  agentConfig: RoleAgentSpecificConfigSchema.optional(),
+});
+
+const OrchestrationPolicyConfigSchema = z
+  .object({
+    mode: z.enum(["delegate_only", "coordinate", "off"]).default("coordinate"),
+    defaultSubagent: z.string().optional(),
+    subagents: z.record(SubagentProfileConfigSchema).default({}),
+  })
+  .optional();
+
 const ProjectConfigSchema = z.object({
   name: z.string().optional(),
+  projectKind: z.enum(["repo", "collection"]).default("repo"),
   repo: z.string().optional(),
   path: z.string(),
   defaultBranch: z.string().default("main"),
@@ -257,6 +286,7 @@ const ProjectConfigSchema = z.object({
   agentConfig: AgentSpecificConfigSchema.default({}),
   orchestrator: RoleAgentConfigSchema,
   worker: RoleAgentConfigSchema,
+  orchestration: OrchestrationPolicyConfigSchema,
   reactions: z.record(ReactionConfigSchema.partial()).optional(),
   agentRules: z.string().optional(),
   agentRulesFile: z.string().optional(),
@@ -265,6 +295,9 @@ const ProjectConfigSchema = z.object({
     .enum(["reuse", "delete", "ignore", "delete-new", "ignore-new", "kill-previous"])
     .optional(),
   opencodeIssueSessionStrategy: z.enum(["reuse", "delete", "ignore"]).optional(),
+  repos: z.record(RepoTargetConfigSchema).optional(),
+  profiles: z.record(z.array(z.string())).optional(),
+  contextDir: z.string().default(".ao/context"),
 });
 
 const DefaultPluginsSchema = z.object({
@@ -386,6 +419,9 @@ function expandHome(filepath: string): string {
 function expandPaths(config: OrchestratorConfig): OrchestratorConfig {
   for (const project of Object.values(config.projects)) {
     project.path = expandHome(project.path);
+    if (project.contextDir) {
+      project.contextDir = expandHome(project.contextDir);
+    }
   }
 
   for (const plugin of config.plugins ?? []) {
@@ -590,6 +626,15 @@ function applyProjectDefaults(config: OrchestratorConfig): OrchestratorConfig {
 
     const inferredPlugin = inferScmPlugin(project);
 
+    if (project.projectKind === "collection") {
+      project.workspace = project.workspace ?? "composite";
+      project.contextDir = project.contextDir ?? ".ao/context";
+      project.profiles = {
+        default: Object.keys(project.repos ?? {}),
+        ...(project.profiles ?? {}),
+      };
+    }
+
     // Infer SCM from repo if not set
     if (!project.scm && project.repo?.includes("/")) {
       project.scm = { plugin: inferredPlugin };
@@ -598,6 +643,17 @@ function applyProjectDefaults(config: OrchestratorConfig): OrchestratorConfig {
     // Infer tracker from repo if not set (default to github issues)
     if (!project.tracker && project.repo?.includes("/")) {
       project.tracker = { plugin: inferredPlugin };
+    }
+
+    if (project.repos) {
+      for (const repo of Object.values(project.repos)) {
+        if (!repo.scm && repo.repo?.includes("/")) {
+          repo.scm = { plugin: inferScmPlugin(repo) };
+        }
+        if (!repo.tracker && repo.repo?.includes("/")) {
+          repo.tracker = { plugin: inferScmPlugin(repo) };
+        }
+      }
     }
   }
 

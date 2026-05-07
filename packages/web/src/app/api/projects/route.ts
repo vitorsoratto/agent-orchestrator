@@ -9,6 +9,7 @@ import {
   loadConfig,
   migrateToGlobalConfig,
   registerProjectInGlobalConfig,
+  writeLocalProjectConfig,
 } from "@aoagents/ao-core";
 import { revalidatePath } from "next/cache";
 import { getAllProjects } from "@/lib/project-name";
@@ -91,7 +92,8 @@ export async function POST(request: NextRequest) {
   const resolvedPath = resolve(expandHomePath(rawPath));
   const projectId = sanitizeString(body["projectId"]) ?? (basename(resolvedPath) || "project");
   const name = sanitizeString(body["name"]) ?? (basename(resolvedPath) || projectId);
-  if (!isGitRepository(resolvedPath)) {
+  const requestedProjectKind = body["projectKind"] === "collection" ? "collection" : "repo";
+  if (requestedProjectKind === "repo" && !isGitRepository(resolvedPath)) {
     return NextResponse.json(
       { error: "Repository path must point to a git repository." },
       { status: 400 },
@@ -104,8 +106,24 @@ export async function POST(request: NextRequest) {
       projectId,
       name ?? projectId,
       resolvedPath,
-      buildSeedLocalConfig(resolvedPath),
+      {
+        ...(requestedProjectKind === "repo" ? buildSeedLocalConfig(resolvedPath) : { defaultBranch: "main" }),
+        projectKind: requestedProjectKind,
+        ...(requestedProjectKind === "collection"
+          ? { workspace: "composite", contextDir: ".ao/context", repos: {}, profiles: { default: [] } }
+          : {}),
+      },
+      { projectKind: requestedProjectKind },
     );
+    if (requestedProjectKind === "collection") {
+      writeLocalProjectConfig(resolvedPath, {
+        projectKind: "collection",
+        workspace: "composite",
+        contextDir: ".ao/context",
+        repos: {},
+        profiles: { default: [] },
+      });
+    }
     invalidatePortfolioServicesCache();
     revalidatePortfolioPaths(registeredProjectId);
     return NextResponse.json({ ok: true, projectId: registeredProjectId }, { status: 201 });

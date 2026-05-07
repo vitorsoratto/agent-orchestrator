@@ -203,6 +203,9 @@ async function spawnSession(
   agent?: string,
   claimOptions?: SpawnClaimOptions,
   prompt?: string,
+  profile?: string,
+  repos?: string[],
+  workerProfile?: string,
 ): Promise<void> {
   const spinner = ora("Creating session").start();
 
@@ -221,6 +224,9 @@ async function spawnSession(
       issueId,
       agent,
       prompt: sanitizedPrompt,
+      profile,
+      repos,
+      workerProfile,
     });
 
     let claimedPrUrl: string | null = null;
@@ -288,6 +294,9 @@ export function registerSpawn(program: Command): void {
     .allowExcessArguments()
     .option("--open", "Open session in terminal tab")
     .option("--agent <name>", "Override the agent plugin (e.g. codex, claude-code)")
+    .option("--profile <name>", "Collection profile to use for composite workspaces")
+    .option("--repos <keys>", "Comma-separated collection subproject keys to include")
+    .option("--worker-profile <name>", "Named worker profile from project orchestration config")
     .option("--claim-pr <pr>", "Immediately claim an existing PR for the spawned session")
     .option("--assign-on-github", "Assign the claimed PR to the authenticated GitHub user")
     .option("--prompt <text>", "Initial prompt/instructions for the agent (use instead of an issue)")
@@ -300,6 +309,9 @@ export function registerSpawn(program: Command): void {
           claimPr?: string;
           assignOnGithub?: boolean;
           prompt?: string;
+          profile?: string;
+          repos?: string;
+          workerProfile?: string;
         },
         command: Command,
       ) => {
@@ -338,7 +350,22 @@ export function registerSpawn(program: Command): void {
           await runSpawnPreflight(config, projectId, claimOptions);
           await warnIfAONotRunning(projectId);
 
-          await spawnSession(config, projectId, issueId, opts.open, opts.agent, claimOptions, opts.prompt);
+          const repoKeys = opts.repos
+            ?.split(",")
+            .map((value) => value.trim())
+            .filter(Boolean);
+          await spawnSession(
+            config,
+            projectId,
+            issueId,
+            opts.open,
+            opts.agent,
+            claimOptions,
+            opts.prompt,
+            opts.profile,
+            repoKeys,
+            opts.workerProfile,
+          );
         } catch (err) {
           console.error(chalk.red(`✗ ${err instanceof Error ? err.message : String(err)}`));
           process.exit(1);

@@ -14,10 +14,26 @@ interface ProjectSettingsResponse {
     id: string;
     name: string;
     path: string;
+    projectKind?: "repo" | "collection";
     repo?: string;
     defaultBranch?: string;
     agent?: string;
     runtime?: string;
+    orchestrator?: { agent?: string; agentConfig?: Record<string, unknown> };
+    worker?: { agent?: string; agentConfig?: Record<string, unknown> };
+    orchestration?: {
+      mode?: "delegate_only" | "coordinate" | "off";
+      defaultSubagent?: string;
+      subagents?: Record<
+        string,
+        {
+          agent?: string;
+          description?: string;
+          repos?: string[];
+          agentConfig?: Record<string, unknown>;
+        }
+      >;
+    };
     tracker?: { plugin?: string };
     scm?: { plugin?: string };
     reactions?: Record<string, unknown>;
@@ -93,6 +109,28 @@ export function ProjectSettingsModal({ open, projectId, onClose }: ProjectSettin
     return {
       agent: project.agent ?? "",
       runtime: project.runtime ?? "",
+      orchestratorAgent: project.orchestrator?.agent ?? "",
+      workerAgent: project.worker?.agent ?? "",
+      workerModel: typeof project.worker?.agentConfig?.model === "string" ? project.worker.agentConfig.model : "",
+      workerReasoningEffort:
+        typeof project.worker?.agentConfig?.reasoningEffort === "string"
+          ? project.worker.agentConfig.reasoningEffort
+          : "",
+      orchestrationMode: project.orchestration?.mode ?? "coordinate",
+      defaultSubagent: project.orchestration?.defaultSubagent ?? "",
+      subagents: Object.entries(project.orchestration?.subagents ?? {}).map(([name, profile]) => ({
+        name,
+        agent: profile.agent ?? "",
+        model: typeof profile.agentConfig?.model === "string" ? profile.agentConfig.model : "",
+        reasoningEffort:
+          typeof profile.agentConfig?.reasoningEffort === "string"
+            ? profile.agentConfig.reasoningEffort
+            : "",
+        permissions:
+          typeof profile.agentConfig?.permissions === "string" ? profile.agentConfig.permissions : "",
+        description: profile.description ?? "",
+        repos: profile.repos?.join(",") ?? "",
+      })),
       trackerPlugin: project.tracker?.plugin ?? "",
       scmPlugin: project.scm?.plugin ?? "",
       reactions: JSON.stringify(project.reactions ?? {}, null, 2),
@@ -141,7 +179,11 @@ export function ProjectSettingsModal({ open, projectId, onClose }: ProjectSettin
             </div>
           ) : null}
           {!loading && !error && initialValues ? (
-            <ProjectSettingsForm projectId={projectId} initialValues={initialValues} />
+            <ProjectSettingsForm
+              projectId={projectId}
+              projectKind={project?.projectKind === "collection" ? "collection" : "repo"}
+              initialValues={initialValues}
+            />
           ) : null}
         </div>
       </div>

@@ -50,6 +50,7 @@ export function AddProjectModal({ open, onClose }: AddProjectModalProps) {
   const [browseError, setBrowseError] = useState<string | null>(null);
   const [projectIdInput, setProjectIdInput] = useState("");
   const [projectNameInput, setProjectNameInput] = useState("");
+  const [projectKind, setProjectKind] = useState<"repo" | "collection">("repo");
 
   const browse = async (
     path: string,
@@ -120,6 +121,7 @@ export function AddProjectModal({ open, onClose }: AddProjectModalProps) {
     setSelectedBrowsePath(initialPath);
     setProjectIdInput("");
     setProjectNameInput("");
+    setProjectKind("repo");
     modalRef.current?.focus();
     void browse(initialPath, { mode: "replace", selectedPath: initialPath });
   }, [open]);
@@ -142,7 +144,7 @@ export function AddProjectModal({ open, onClose }: AddProjectModalProps) {
     selectedBrowsePath.trim() !== "" &&
     selectedBrowsePath !== "~" &&
     !browseError &&
-    Boolean(selectedEntry?.isGitRepo) &&
+    (projectKind === "collection" || Boolean(selectedEntry?.isGitRepo)) &&
     projectIdValue.length > 0 &&
     projectNameValue.length > 0;
   const selectedIndex = directoryEntries.findIndex(
@@ -211,7 +213,13 @@ export function AddProjectModal({ open, onClose }: AddProjectModalProps) {
       const response = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, name, path: resolvedPath, useDefaultProjectId }),
+        body: JSON.stringify({
+          projectId,
+          name,
+          path: resolvedPath,
+          ...(projectKind === "collection" ? { projectKind } : {}),
+          useDefaultProjectId,
+        }),
       });
       const body = (await response.json().catch(() => null)) as
         | {
@@ -271,7 +279,7 @@ export function AddProjectModal({ open, onClose }: AddProjectModalProps) {
     </div>
   ) : inlineError ? (
     <div role="alert" className="add-project-modal__notice add-project-modal__notice--error">{inlineError}</div>
-  ) : selectedEntry && !selectedEntry.isGitRepo ? (
+  ) : selectedEntry && projectKind === "repo" && !selectedEntry.isGitRepo ? (
     <div role="alert" className="add-project-modal__notice add-project-modal__notice--error">
       Selected folder is not a git repository.
     </div>
@@ -358,6 +366,29 @@ export function AddProjectModal({ open, onClose }: AddProjectModalProps) {
             onChange={(event) => setProjectNameInput(event.target.value)}
             className="add-project-modal__selection-path"
           />
+        </div>
+        <div className="add-project-modal__pathbar add-project-modal__pathbar--selection">
+          <span className="add-project-modal__selection-label">Project type</span>
+          <div className="add-project-modal__selection-path">
+            <label>
+              <input
+                type="radio"
+                name="project-kind"
+                checked={projectKind === "repo"}
+                onChange={() => setProjectKind("repo")}
+              />{" "}
+              Repo
+            </label>
+            <label style={{ marginLeft: 16 }}>
+              <input
+                type="radio"
+                name="project-kind"
+                checked={projectKind === "collection"}
+                onChange={() => setProjectKind("collection")}
+              />{" "}
+              Collection root
+            </label>
+          </div>
         </div>
         {selectedNotice}
 

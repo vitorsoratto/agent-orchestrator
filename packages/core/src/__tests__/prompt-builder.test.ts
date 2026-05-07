@@ -105,6 +105,32 @@ describe("buildPrompt", () => {
     expect(systemPrompt).toContain("main");
   });
 
+  it("includes collection workspace context", () => {
+    project = {
+      ...project,
+      repo: undefined,
+      projectKind: "collection",
+      workspace: "composite",
+      contextDir: ".ao/context",
+      repos: {
+        "api-go": {
+          path: "api-go",
+          repo: "org/api-go",
+          defaultBranch: "dev",
+        },
+      },
+      profiles: {
+        default: ["api-go"],
+      },
+    };
+
+    const { systemPrompt } = buildPrompt({ project, projectId: "test-app" });
+
+    expect(systemPrompt).toContain("Project kind: collection");
+    expect(systemPrompt).toContain("Shared context directory: .ao/context");
+    expect(systemPrompt).toContain("api-go: api-go (org/api-go, default dev)");
+  });
+
   it("uses trimmed base prompt when repo is not configured", () => {
     const noRepoProject = { ...project, repo: undefined };
     const { systemPrompt } = buildPrompt({ project: noRepoProject, projectId: "test-app" });

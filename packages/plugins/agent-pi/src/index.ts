@@ -322,12 +322,24 @@ function createPiAgent(): Agent {
     // tmux and inject the prompt via runtime.sendMessage after launch.
     promptDelivery: "post-launch",
 
-    getLaunchCommand(_config: AgentLaunchConfig): string {
+    getLaunchCommand(config: AgentLaunchConfig): string {
       const binary = resolvedBinary ?? "pi";
-      // Pi has no documented flags for permissions / model overrides — both
-      // are managed inside pi via /login and slash commands. Keep it simple
-      // and let the user configure pi the usual way.
-      return shellEscape(binary);
+      const parts = [shellEscape(binary)];
+      if (config.model) {
+        parts.push("--model", shellEscape(config.model));
+      }
+      if (config.reasoningEffort) {
+        parts.push("--thinking", shellEscape(config.reasoningEffort));
+      }
+      if (config.systemPromptFile) {
+        parts.push("--append-system-prompt", shellEscape(config.systemPromptFile));
+      } else if (config.systemPrompt) {
+        parts.push("--append-system-prompt", shellEscape(config.systemPrompt));
+      }
+      if (config.prompt) {
+        parts.push("--", shellEscape(config.prompt));
+      }
+      return parts.join(" ");
     },
 
     getEnvironment(config: AgentLaunchConfig): Record<string, string> {

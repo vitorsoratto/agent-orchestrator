@@ -55,6 +55,7 @@
     "@aoagents/ao-plugin-tracker-github": "workspace:*",
     "@aoagents/ao-plugin-tracker-linear": "workspace:*",
     "@aoagents/ao-plugin-workspace-clone": "workspace:*",
+    "@aoagents/ao-plugin-workspace-composite": "workspace:*",
     "@aoagents/ao-plugin-workspace-worktree": "workspace:*",
     "@aoagents/ao-web": "workspace:*",
     "@clack/prompts": "^0.9.1",

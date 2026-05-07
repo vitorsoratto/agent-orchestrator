@@ -64,6 +64,7 @@ function sanitizeBasename(name: string): string {
 export interface RegisterProjectOptions {
   /** @deprecated No longer used — storageKey has been removed */
   allowStorageKeyReuse?: boolean;
+  projectKind?: "repo" | "collection";
 }
 
 // =============================================================================
@@ -117,6 +118,7 @@ const GLOBAL_PROJECT_ENTRY_FIELDS = new Set([
   "path",
   "repo",
   "defaultBranch",
+  "projectKind",
   "source",
   "registeredAt",
   "displayName",
@@ -139,6 +141,7 @@ export const GlobalProjectEntrySchema = z.object({
   path: z.string(),
   repo: GlobalRepoIdentitySchema.optional(),
   defaultBranch: z.string().optional(),
+  projectKind: z.enum(["repo", "collection"]).optional(),
   source: z.string().optional(),
   registeredAt: z.number().optional(),
   displayName: z.string().optional(),
@@ -205,6 +208,7 @@ export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
  */
 export const LocalProjectConfigSchema = z
   .object({
+    projectKind: z.enum(["repo", "collection"]).optional(),
     repo: z.string().optional(),
     defaultBranch: z.string().optional(),
     runtime: z.string().optional(),
@@ -237,6 +241,7 @@ export const LocalProjectConfigSchema = z
           .optional(),
         model: z.string().optional(),
         orchestratorModel: z.string().optional(),
+        reasoningEffort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
       })
       .passthrough()
       .optional(),
@@ -246,6 +251,23 @@ export const LocalProjectConfigSchema = z
     worker: z
       .object({ agent: z.string().optional(), agentConfig: z.object({}).passthrough().optional() })
       .optional(),
+    orchestration: z
+      .object({
+        mode: z.enum(["delegate_only", "coordinate", "off"]).optional(),
+        defaultSubagent: z.string().optional(),
+        subagents: z
+          .record(
+            z.object({
+              agent: z.string(),
+              description: z.string().optional(),
+              repos: z.array(z.string()).optional(),
+              agentConfig: z.object({}).passthrough().optional(),
+            }),
+          )
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
     reactions: z.record(z.object({}).passthrough()).optional(),
     agentRules: z.string().optional(),
     agentRulesFile: z.string().optional(),
@@ -254,6 +276,20 @@ export const LocalProjectConfigSchema = z
       .enum(["reuse", "delete", "ignore", "delete-new", "ignore-new", "kill-previous"])
       .optional(),
     opencodeIssueSessionStrategy: z.enum(["reuse", "delete", "ignore"]).optional(),
+    repos: z
+      .record(
+        z.object({
+          name: z.string().optional(),
+          repo: z.string().optional(),
+          path: z.string(),
+          defaultBranch: z.string().default("main"),
+          scm: z.object({ plugin: z.string() }).passthrough().optional(),
+          tracker: z.object({ plugin: z.string() }).passthrough().optional(),
+        }),
+      )
+      .optional(),
+    profiles: z.record(z.array(z.string())).optional(),
+    contextDir: z.string().optional(),
     decomposer: z.object({}).passthrough().optional(),
   })
   .passthrough();
@@ -709,6 +745,11 @@ export function registerProjectInGlobalConfig(
       existing?.sessionPrefix ??
       localConfig?.sessionPrefix ??
       generateSessionPrefix(basename(requestedProjectPath));
+    const projectKind =
+      (existing?.projectKind as "repo" | "collection" | undefined) ??
+      (typeof optionsOrGlobalConfigPath === "object" ? optionsOrGlobalConfigPath?.projectKind : undefined) ??
+      localConfig?.projectKind ??
+      "repo";
     const source = existing?.source ?? (repoIdentity ? "ao-project-add" : "local");
     const registeredAt = existing?.registeredAt ?? Math.floor(Date.now() / 1000);
     const explicitSessionPrefix = !existing?.sessionPrefix && Boolean(localConfig?.sessionPrefix);
@@ -734,6 +775,7 @@ export function registerProjectInGlobalConfig(
       path: normalizedProjectPath,
       ...(repoIdentity ? { repo: repoIdentity } : {}),
       defaultBranch,
+      projectKind,
       source,
       registeredAt,
       displayName: name,
@@ -815,6 +857,7 @@ export function resolveProjectIdentity(
   const identityFields = {
     name,
     path: projectPath,
+    projectKind: entry.projectKind ?? "repo",
     ...(repoString ? { repo: repoString } : {}),
     sessionPrefix,
     defaultBranch,

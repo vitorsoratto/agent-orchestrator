@@ -14,6 +14,7 @@ export interface ResolvedAgentSelection {
   agentName: string;
   agentConfig: AgentSpecificConfig;
   model?: string;
+  reasoningEffort?: AgentSpecificConfig["reasoningEffort"];
   permissions?: AgentPermissionMode;
   subagent?: string;
 }
@@ -73,6 +74,16 @@ export function resolveAgentSelection(params: {
     agentConfig.model = model;
   }
 
+  const reasoningEffort =
+    typeof roleAgentConfig.reasoningEffort === "string"
+      ? roleAgentConfig.reasoningEffort
+      : typeof sharedConfig.reasoningEffort === "string"
+        ? sharedConfig.reasoningEffort
+        : undefined;
+  if (reasoningEffort !== undefined) {
+    agentConfig.reasoningEffort = reasoningEffort;
+  }
+
   const permissions = normalizeAgentPermissionMode(
     typeof agentConfig.permissions === "string" ? agentConfig.permissions : undefined,
   );
@@ -87,6 +98,7 @@ export function resolveAgentSelection(params: {
     agentName,
     agentConfig,
     model,
+    reasoningEffort,
     permissions,
     subagent,
   };

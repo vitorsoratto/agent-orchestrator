@@ -61,6 +61,11 @@ export async function POST(request: NextRequest) {
       projectId,
       issueId: (body.issueId as string) ?? undefined,
       prompt: prompt || undefined,
+      profile: typeof body.profile === "string" ? body.profile : undefined,
+      repos: Array.isArray(body.repos)
+        ? body.repos.filter((repo): repo is string => typeof repo === "string")
+        : undefined,
+      workerProfile: typeof body.workerProfile === "string" ? body.workerProfile : undefined,
     });
 
     recordApiObservation({

@@ -3,6 +3,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectSettingsForm } from "@/components/ProjectSettingsForm";
 
 const refreshMock = vi.fn();
+const settingsOptions = {
+  agents: ["claude-code", "codex", "cursor", "pi"],
+  runtimes: ["tmux"],
+  trackers: ["github"],
+  scms: ["github"],
+  reasoningEfforts: ["low", "medium", "high"],
+  permissions: ["permissionless"],
+  modelsByAgent: {
+    codex: ["gpt-5.5"],
+    pi: ["openai-codex/gpt-5.5"],
+  },
+  orchestrationModes: ["delegate_only", "coordinate", "off"],
+};
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: refreshMock, push: vi.fn(), replace: vi.fn() }),
@@ -15,6 +28,10 @@ describe("ProjectSettingsForm", () => {
   });
 
   it("submits only behavior fields and keeps identity fields disabled", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => settingsOptions,
+    } as Response);
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ ok: true }),
@@ -42,11 +59,16 @@ describe("ProjectSettingsForm", () => {
     expect(screen.getByDisplayValue("/tmp/docs")).toBeDisabled();
     expect(screen.getByDisplayValue("org/repo")).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "claude-code" } });
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: "Agent" })).toHaveValue("codex");
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Agent" }), {
+      target: { value: "claude-code" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith("/api/projects/docs", {
+      expect(fetch).toHaveBeenLastCalledWith("/api/projects/docs", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -72,6 +94,10 @@ describe("ProjectSettingsForm", () => {
 
   it("shows an inline error for a 400 without losing form state", async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => settingsOptions,
+    } as Response);
+    vi.mocked(fetch).mockResolvedValueOnce({
       ok: false,
       status: 400,
       json: async () => ({ error: "Identity fields are frozen: path" }),
@@ -96,12 +122,17 @@ describe("ProjectSettingsForm", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "cursor" } });
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: "Agent" })).toHaveValue("codex");
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Agent" }), {
+      target: { value: "cursor" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Identity fields are frozen: path");
     });
-    expect(screen.getByDisplayValue("cursor")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Agent" })).toHaveValue("cursor");
   });
 });
